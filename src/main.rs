@@ -1,4 +1,4 @@
-#![cfg_attr(not(debug_assertions), windows_subsytem = "windows")]
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use anyhow::{Context, Result};
 use std::char::{decode_utf16, REPLACEMENT_CHARACTER};
@@ -110,7 +110,7 @@ fn save_to_wav(hwnd: HWND) -> Result<()> {
     let file_name = file_path.file_name().context("no file name.")?;
     let msg = format!("{} を保存しました。", file_name.to_string_lossy());
     let msg = msg.encode_utf16().chain(Some(0)).collect::<Vec<_>>();
-    unsafe { MessageBoxW(hwnd, PCWSTR(msg.as_ptr()), None, MB_OK) };
+    unsafe { MessageBoxW(hwnd, PCWSTR(msg.as_ptr()), w!("speech"), MB_OK) };
     Ok(())
 }
 
