@@ -75,15 +75,17 @@ fn speech() -> Result<()> {
 }
 
 fn get_save_file_path(hwnd: HWND) -> Result<PathBuf> {
-    let len = 512;
-    let mut buf = vec![0; len];
+    let mut buf = "speech.wav"
+        .encode_utf16()
+        .chain([0; 502])
+        .collect::<Vec<_>>();
     let mut filename = OPENFILENAMEW {
         lStructSize: mem::size_of::<OPENFILENAMEW>() as _,
         hwndOwner: hwnd,
         lpstrFile: PWSTR::from_raw(buf.as_mut_ptr()),
         lpstrFilter: w!("Wave File (.wav)\0*.wav\0\0"),
         lpstrDefExt: w!("wav"),
-        nMaxFile: len as _,
+        nMaxFile: buf.len() as _,
         ..Default::default()
     };
     unsafe { GetSaveFileNameW(&mut filename).ok()? };
