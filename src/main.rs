@@ -49,14 +49,13 @@ static mut EDIT_HWND: Option<HWND> = None;
 static mut COMBOBOX_HWND: Option<HWND> = None;
 
 fn get_selected_voice_information() -> Result<VoiceInformation> {
-    let hwnd = unsafe { COMBOBOX_HWND.context("no combobox hwnd.")? };
-    let ret = unsafe { SendMessageW(hwnd, CB_GETCURSEL, None, None) };
+    let ret = unsafe { SendMessageW(COMBOBOX_HWND.as_ref(), CB_GETCURSEL, None, None) };
     ensure!(ret.0 >= 0, "failed to get selected item index.");
 
-    let buf = vec![0u16; 64];
+    let buf = [0u16; 64];
     let ret = unsafe {
         SendMessageW(
-            hwnd,
+            COMBOBOX_HWND.as_ref(),
             CB_GETLBTEXT,
             WPARAM(ret.0 as _),
             LPARAM(buf.as_ptr() as _),
@@ -104,6 +103,7 @@ fn speech() -> Result<()> {
         }))?;
         player.Play()?;
         rx.recv()?;
+        player.Close()?;
         player.RemoveMediaEnded(token_media_ended)?;
         player.RemoveMediaFailed(token_media_failed)?;
         Ok(())
@@ -176,21 +176,15 @@ fn loword(dword: u32) -> u16 {
     ((dword << 16) >> 16) as _
 }
 
-fn get_edit_control_hwnd() -> Result<HWND> {
-    unsafe { EDIT_HWND.context("no edit control hwnd") }
-}
-
 fn get_edit_control_text() -> Result<Vec<u16>> {
-    let hwnd = get_edit_control_hwnd()?;
-    let len = unsafe { GetWindowTextLengthW(hwnd) };
+    let len = unsafe { GetWindowTextLengthW(EDIT_HWND.as_ref()) };
     let mut buf = vec![0; len as usize + 1];
-    unsafe { GetWindowTextW(hwnd, &mut buf) };
+    unsafe { GetWindowTextW(EDIT_HWND.as_ref(), &mut buf) };
     Ok(buf)
 }
 
 fn clear_edit_control_text() -> Result<()> {
-    let hwnd = get_edit_control_hwnd()?;
-    unsafe { SendMessageW(hwnd, WM_SETTEXT, None, None) };
+    unsafe { SendMessageW(EDIT_HWND.as_ref(), WM_SETTEXT, None, None) };
     Ok(())
 }
 
