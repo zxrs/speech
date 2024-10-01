@@ -9,6 +9,7 @@ anyhow = "1.0"
 [dependencies.windows]
 version = "0.58"
 features = [
+    "Foundation_Collections",
     "Media_SpeechSynthesis",
     "Media_Playback",
     "Media_Core",
@@ -18,6 +19,7 @@ features = [
     "Win32_UI_WindowsAndMessaging",
     "Win32_System_LibraryLoader",
     "Win32_UI_Controls_Dialogs",
+    "Win32_UI_Controls",
 ]
 
 [profile.dev]

@@ -1,6 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use anyhow::{Context, Result};
+use anyhow::{ensure, Context, Result};
 use std::char::{decode_utf16, REPLACEMENT_CHARACTER};
 use std::mem;
 use std::path::PathBuf;
@@ -13,7 +13,7 @@ use windows::{
     Media::{
         Core::MediaSource,
         Playback::MediaPlayer,
-        SpeechSynthesis::{SpeechSynthesisStream, SpeechSynthesizer},
+        SpeechSynthesis::{SpeechSynthesisStream, SpeechSynthesizer, VoiceInformation},
     },
     Storage::Streams::DataReader,
     Win32::{
@@ -21,15 +21,20 @@ use windows::{
         Graphics::Gdi::{GetSysColorBrush, UpdateWindow, COLOR_MENUBAR},
         System::{LibraryLoader::GetModuleHandleW, WinRT::IBufferByteAccess},
         UI::{
-            Controls::Dialogs::{GetSaveFileNameW, OPENFILENAMEW},
+            Controls::{
+                Dialogs::{GetSaveFileNameW, OPENFILENAMEW},
+                WC_COMBOBOXW,
+            },
             WindowsAndMessaging::{
                 CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClientRect, GetMessageW,
                 GetWindowTextLengthW, GetWindowTextW, MessageBoxW, PostQuitMessage, RegisterClassW,
-                SendMessageW, ShowWindow, TranslateMessage, BS_PUSHBUTTON, CW_USEDEFAULT,
-                ES_AUTOVSCROLL, ES_MULTILINE, ES_WANTRETURN, HMENU, MB_OK, MSG, SW_SHOW,
-                WINDOW_EX_STYLE, WINDOW_STYLE, WM_COMMAND, WM_CREATE, WM_DESTROY, WM_SETTEXT,
-                WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD, WS_MINIMIZEBOX, WS_OVERLAPPED,
-                WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+                SendMessageW, ShowWindow, TranslateMessage, BS_PUSHBUTTON, CBS_DROPDOWNLIST,
+                CBS_HASSTRINGS, CBS_SORT, CB_ADDSTRING, CB_GETCURSEL, CB_GETLBTEXT,
+                CB_SELECTSTRING, CW_USEDEFAULT, ES_AUTOVSCROLL, ES_MULTILINE, ES_WANTRETURN, HMENU,
+                MB_OK, MSG, SW_SHOW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_COMMAND, WM_CREATE,
+                WM_DESTROY, WM_SETTEXT, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD,
+                WS_EX_STATICEDGE, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP,
+                WS_VISIBLE, WS_VSCROLL,
             },
         },
     },
@@ -39,11 +44,43 @@ const CLASS_NAME: PCWSTR = w!("speech_window_cls42");
 const ID_PLAY: u16 = 5890;
 const ID_CLEAR: u16 = 5891;
 const ID_SAVE: u16 = 5892;
+const ID_COMBO: u16 = 5893;
 static mut EDIT_HWND: Option<HWND> = None;
+static mut COMBOBOX_HWND: Option<HWND> = None;
+
+fn get_selected_voice_information() -> Result<VoiceInformation> {
+    let hwnd = unsafe { COMBOBOX_HWND.context("no combobox hwnd.")? };
+    let ret = unsafe { SendMessageW(hwnd, CB_GETCURSEL, None, None) };
+    ensure!(ret.0 >= 0, "failed to get selected item index.");
+
+    let buf = vec![0u16; 64];
+    let ret = unsafe {
+        SendMessageW(
+            hwnd,
+            CB_GETLBTEXT,
+            WPARAM(ret.0 as _),
+            LPARAM(buf.as_ptr() as _),
+        )
+    };
+
+    SpeechSynthesizer::AllVoices()?
+        .into_iter()
+        .filter_map(|v| {
+            if v.DisplayName().ok()?.as_wide() == &buf[..ret.0 as _] {
+                Some(v)
+            } else {
+                None
+            }
+        })
+        .next()
+        .context("no voice.")
+}
 
 fn speech_synthesis_stream(source: &[u16]) -> Result<SpeechSynthesisStream> {
     let source = HSTRING::from_wide(source)?;
     let synth = SpeechSynthesizer::new()?;
+    let voice = get_selected_voice_information()?;
+    synth.SetVoice(&voice)?;
     let stream = synth.SynthesizeTextToStreamAsync(&source)?.get()?;
     Ok(stream)
 }
@@ -214,6 +251,48 @@ fn create_save_button(hwnd: HWND) -> Result<()> {
     Ok(())
 }
 
+fn create_combobox(hwnd: HWND) -> Result<()> {
+    let hwnd = unsafe {
+        CreateWindowExW(
+            WS_EX_STATICEDGE,
+            WC_COMBOBOXW,
+            None,
+            WINDOW_STYLE((CBS_DROPDOWNLIST | CBS_HASSTRINGS | CBS_SORT) as _)
+                | WS_CHILD
+                | WS_VISIBLE
+                | WS_VSCROLL,
+            340,
+            12,
+            227,
+            200,
+            hwnd,
+            HMENU(ID_COMBO as _),
+            None,
+            None,
+        )?
+    };
+
+    SpeechSynthesizer::AllVoices()?
+        .into_iter()
+        .try_for_each(|v| -> Result<()> {
+            let name = v.DisplayName()?;
+            unsafe { SendMessageW(hwnd, CB_ADDSTRING, None, LPARAM(name.as_ptr() as _)) };
+            Ok(())
+        })?;
+
+    let default_voice = SpeechSynthesizer::DefaultVoice()?.DisplayName()?;
+    unsafe {
+        SendMessageW(
+            hwnd,
+            CB_SELECTSTRING,
+            None,
+            LPARAM(default_voice.as_ptr() as _),
+        )
+    };
+    unsafe { COMBOBOX_HWND = Some(hwnd) };
+    Ok(())
+}
+
 fn create_edit(hwnd: HWND) -> Result<()> {
     let rc = unsafe {
         let mut rc = RECT::default();
@@ -251,6 +330,7 @@ fn create(hwnd: HWND) -> Result<()> {
     create_clear_button(hwnd)?;
     create_save_button(hwnd)?;
     create_edit(hwnd)?;
+    create_combobox(hwnd)?;
     Ok(())
 }
 
@@ -290,12 +370,10 @@ fn main() -> Result<()> {
         if !unsafe { GetMessageW(&mut msg, None, 0, 0) }.as_bool() {
             break;
         }
-
         unsafe {
-            let _ = TranslateMessage(&msg);
+            _ = TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
     }
-
     Ok(())
 }
