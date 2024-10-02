@@ -196,7 +196,7 @@ fn clear_edit_control_text() -> Result<()> {
     let mut stop = STOP.lock().unwrap();
     loop {
         if let Some(tx) = stop.pop().take() {
-            tx.send(()).unwrap();
+            tx.send(()).ok();
         } else {
             break;
         }
