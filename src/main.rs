@@ -5,7 +5,10 @@ use std::char::{decode_utf16, REPLACEMENT_CHARACTER};
 use std::mem;
 use std::path::PathBuf;
 use std::slice;
-use std::sync::mpsc;
+use std::sync::{
+    mpsc::{self, Sender},
+    Mutex,
+};
 use std::thread;
 use windows::{
     core::{w, Interface, HSTRING, PCWSTR, PWSTR},
@@ -47,6 +50,7 @@ const ID_SAVE: u16 = 5892;
 const ID_COMBO: u16 = 5893;
 static mut EDIT_HWND: Option<HWND> = None;
 static mut COMBOBOX_HWND: Option<HWND> = None;
+static STOP: Mutex<Vec<Sender<()>>> = Mutex::new(vec![]);
 
 fn get_selected_voice_information() -> Result<VoiceInformation> {
     let ret = unsafe { SendMessageW(COMBOBOX_HWND.as_ref(), CB_GETCURSEL, None, None) };
@@ -92,6 +96,10 @@ fn speech() -> Result<()> {
         let media_source = MediaSource::CreateFromStream(&stream, &stream.ContentType()?)?;
         player.SetSource(&media_source)?;
         let (tx, rx) = mpsc::channel();
+        {
+            let mut stop = STOP.lock().unwrap();
+            stop.push(tx.clone());
+        }
         let tx_clone = tx.clone();
         let token_media_ended = player.MediaEnded(&TypedEventHandler::new(move |_, _| {
             tx_clone.send(()).ok();
@@ -185,6 +193,14 @@ fn get_edit_control_text() -> Result<Vec<u16>> {
 
 fn clear_edit_control_text() -> Result<()> {
     unsafe { SendMessageW(EDIT_HWND.as_ref(), WM_SETTEXT, None, None) };
+    let mut stop = STOP.lock().unwrap();
+    loop {
+        if let Some(tx) = stop.pop().take() {
+            tx.send(()).unwrap();
+        } else {
+            break;
+        }
+    }
     Ok(())
 }
 
