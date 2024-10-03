@@ -1,7 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use anyhow::{ensure, Context, Result};
-use std::borrow::Borrow;
 use std::char::{decode_utf16, REPLACEMENT_CHARACTER};
 use std::mem;
 use std::path::PathBuf;
@@ -69,7 +68,7 @@ impl Hwnd {
 }
 
 fn get_selected_voice_information() -> Result<VoiceInformation> {
-    let hwnd = COMBOBOX_HWND.borrow().get().context("no handle")?.handle();
+    let hwnd = COMBOBOX_HWND.get().context("no handle")?.handle();
     let ret = unsafe { SendMessageW(hwnd, CB_GETCURSEL, None, None) };
     ensure!(ret.0 >= 0, "failed to get selected item index.");
 
@@ -202,7 +201,7 @@ fn loword(dword: u32) -> u16 {
 }
 
 fn get_edit_control_text() -> Result<Vec<u16>> {
-    let hwnd = EDIT_HWND.borrow().get().context("no handle.")?.handle();
+    let hwnd = EDIT_HWND.get().context("no handle.")?.handle();
     let len = unsafe { GetWindowTextLengthW(hwnd) };
     let mut buf = vec![0; len as usize + 1];
     unsafe { GetWindowTextW(hwnd, &mut buf) };
@@ -210,7 +209,7 @@ fn get_edit_control_text() -> Result<Vec<u16>> {
 }
 
 fn clear_edit_control_text() -> Result<()> {
-    let hwnd = EDIT_HWND.borrow().get().context("no handle.")?.handle();
+    let hwnd = EDIT_HWND.get().context("no handle.")?.handle();
     unsafe { SendMessageW(hwnd, WM_SETTEXT, None, None) };
     let mut stop = STOP.lock().unwrap();
     while !stop.is_empty() {
