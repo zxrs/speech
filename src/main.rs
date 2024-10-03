@@ -1,13 +1,14 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use anyhow::{ensure, Context, Result};
+use std::borrow::Borrow;
 use std::char::{decode_utf16, REPLACEMENT_CHARACTER};
 use std::mem;
 use std::path::PathBuf;
 use std::slice;
 use std::sync::{
     mpsc::{self, Sender},
-    Mutex,
+    Mutex, OnceLock,
 };
 use std::thread;
 use windows::{
@@ -48,18 +49,34 @@ const ID_PLAY: u16 = 5890;
 const ID_CLEAR: u16 = 5891;
 const ID_SAVE: u16 = 5892;
 const ID_COMBO: u16 = 5893;
-static mut EDIT_HWND: Option<HWND> = None;
-static mut COMBOBOX_HWND: Option<HWND> = None;
+static EDIT_HWND: OnceLock<Hwnd> = OnceLock::new();
+static COMBOBOX_HWND: OnceLock<Hwnd> = OnceLock::new();
 static STOP: Mutex<Vec<Sender<()>>> = Mutex::new(vec![]);
 
+struct Hwnd(HWND);
+
+unsafe impl Sync for Hwnd {}
+unsafe impl Send for Hwnd {}
+
+impl Hwnd {
+    fn new(hwnd: HWND) -> Self {
+        Self(hwnd)
+    }
+
+    fn handle(&self) -> HWND {
+        self.0
+    }
+}
+
 fn get_selected_voice_information() -> Result<VoiceInformation> {
-    let ret = unsafe { SendMessageW(COMBOBOX_HWND.as_ref(), CB_GETCURSEL, None, None) };
+    let hwnd = COMBOBOX_HWND.borrow().get().context("no handle")?.handle();
+    let ret = unsafe { SendMessageW(hwnd, CB_GETCURSEL, None, None) };
     ensure!(ret.0 >= 0, "failed to get selected item index.");
 
     let buf = [0u16; 64];
     let ret = unsafe {
         SendMessageW(
-            COMBOBOX_HWND.as_ref(),
+            hwnd,
             CB_GETLBTEXT,
             WPARAM(ret.0 as _),
             LPARAM(buf.as_ptr() as _),
@@ -185,20 +202,20 @@ fn loword(dword: u32) -> u16 {
 }
 
 fn get_edit_control_text() -> Result<Vec<u16>> {
-    let len = unsafe { GetWindowTextLengthW(EDIT_HWND.as_ref()) };
+    let hwnd = EDIT_HWND.borrow().get().context("no handle.")?.handle();
+    let len = unsafe { GetWindowTextLengthW(hwnd) };
     let mut buf = vec![0; len as usize + 1];
-    unsafe { GetWindowTextW(EDIT_HWND.as_ref(), &mut buf) };
+    unsafe { GetWindowTextW(hwnd, &mut buf) };
     Ok(buf)
 }
 
 fn clear_edit_control_text() -> Result<()> {
-    unsafe { SendMessageW(EDIT_HWND.as_ref(), WM_SETTEXT, None, None) };
+    let hwnd = EDIT_HWND.borrow().get().context("no handle.")?.handle();
+    unsafe { SendMessageW(hwnd, WM_SETTEXT, None, None) };
     let mut stop = STOP.lock().unwrap();
-    loop {
-        if let Some(tx) = stop.pop().take() {
-            tx.send(()).ok();
-        } else {
-            break;
+    while !stop.is_empty() {
+        if let Some(tx) = stop.pop() {
+            _ = tx.send(());
         }
     }
     Ok(())
@@ -299,7 +316,7 @@ fn create_combobox(hwnd: HWND) -> Result<()> {
             LPARAM(default_voice.as_ptr() as _),
         )
     };
-    unsafe { COMBOBOX_HWND = Some(hwnd) };
+    COMBOBOX_HWND.get_or_init(|| Hwnd::new(hwnd));
     Ok(())
 }
 
@@ -331,7 +348,7 @@ fn create_edit(hwnd: HWND) -> Result<()> {
             None,
         )?
     };
-    unsafe { EDIT_HWND = Some(hwnd) };
+    EDIT_HWND.get_or_init(|| Hwnd::new(hwnd));
     Ok(())
 }
 
