@@ -21,11 +21,16 @@ use windows::{
     Storage::Streams::DataReader,
     Win32::{
         Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM},
-        Graphics::Gdi::{GetSysColorBrush, UpdateWindow, COLOR_MENUBAR},
+        Graphics::Gdi::{
+            BeginPaint, EndPaint, GetSysColorBrush, SetBkMode, TextOutW, UpdateWindow,
+            COLOR_MENUBAR, PAINTSTRUCT, TRANSPARENT,
+        },
         System::{LibraryLoader::GetModuleHandleW, WinRT::IBufferByteAccess},
         UI::{
             Controls::{
                 Dialogs::{GetSaveFileNameW, OPENFILENAMEW},
+                InitCommonControlsEx, ICC_BAR_CLASSES, INITCOMMONCONTROLSEX, TBM_SETPAGESIZE,
+                TBM_SETPOS, TBM_SETRANGE, TBM_SETTICFREQ, TBS_AUTOTICKS, TBS_TOOLTIPS,
                 WC_COMBOBOXW,
             },
             WindowsAndMessaging::{
@@ -35,7 +40,7 @@ use windows::{
                 CBS_HASSTRINGS, CBS_SORT, CB_ADDSTRING, CB_GETCURSEL, CB_GETLBTEXT,
                 CB_SELECTSTRING, CW_USEDEFAULT, ES_AUTOVSCROLL, ES_MULTILINE, ES_WANTRETURN, HMENU,
                 MB_OK, MSG, SW_SHOW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_COMMAND, WM_CREATE,
-                WM_DESTROY, WM_SETTEXT, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD,
+                WM_DESTROY, WM_PAINT, WM_SETTEXT, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD,
                 WS_EX_STATICEDGE, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP,
                 WS_VISIBLE, WS_VSCROLL,
             },
@@ -48,8 +53,10 @@ const ID_PLAY: u16 = 5890;
 const ID_CLEAR: u16 = 5891;
 const ID_SAVE: u16 = 5892;
 const ID_COMBO: u16 = 5893;
+const ID_TRACKBAR: u16 = 5894;
 static EDIT_HWND: OnceLock<Hwnd> = OnceLock::new();
 static COMBOBOX_HWND: OnceLock<Hwnd> = OnceLock::new();
+static TRACKBAR_HWND: OnceLock<Hwnd> = OnceLock::new();
 static STOP: Mutex<Vec<Sender<()>>> = Mutex::new(vec![]);
 
 struct Hwnd(HWND);
@@ -95,11 +102,20 @@ fn get_selected_voice_information() -> Result<VoiceInformation> {
         .context("no voice.")
 }
 
+fn get_speaking_rate() -> Result<f64> {
+    let hwnd = TRACKBAR_HWND.get().context("no handle.")?.handle();
+    let ret = unsafe { SendMessageW(hwnd, 1024, None, None) }.0 as f64 / 10.0;
+    ensure!(0.5 <= ret && ret <= 2.5, "invalid speaking rate.");
+    Ok(ret)
+}
+
 fn speech_synthesis_stream(source: &[u16]) -> Result<SpeechSynthesisStream> {
     let source = HSTRING::from_wide(source)?;
     let synth = SpeechSynthesizer::new()?;
     let voice = get_selected_voice_information()?;
     synth.SetVoice(&voice)?;
+    let speaking_rate = get_speaking_rate()?;
+    synth.Options()?.SetSpeakingRate(speaking_rate)?;
     let stream = synth.SynthesizeTextToStreamAsync(&source)?.get()?;
     Ok(stream)
 }
@@ -177,6 +193,16 @@ fn save_to_wav(hwnd: HWND) -> Result<()> {
     Ok(())
 }
 
+fn paint(hwnd: HWND) -> Result<()> {
+    let mut ps = PAINTSTRUCT::default();
+    let hdc = unsafe { BeginPaint(hwnd, &mut ps) };
+    unsafe { SetBkMode(hdc, TRANSPARENT) };
+    unsafe { TextOutW(hdc, 10, 50, w!("読み上げ速度：遅").as_wide()).ok()? };
+    unsafe { TextOutW(hdc, 550, 50, w!("速").as_wide()).ok()? };
+    unsafe { EndPaint(hwnd, &mut ps).ok()? };
+    Ok(())
+}
+
 unsafe extern "system" fn wnd_proc(
     hwnd: HWND,
     msg: u32,
@@ -189,6 +215,9 @@ unsafe extern "system" fn wnd_proc(
         }
         WM_COMMAND => {
             command(hwnd, wparam).ok();
+        }
+        WM_PAINT => {
+            paint(hwnd).ok();
         }
         WM_DESTROY => PostQuitMessage(0),
         _ => return DefWindowProcW(hwnd, msg, wparam, lparam),
@@ -338,9 +367,9 @@ fn create_edit(hwnd: HWND) -> Result<()> {
                 //| WS_HSCROLL,
             | WS_VSCROLL,
             0,
-            50,
+            80,
             rc.right,
-            rc.bottom - 50,
+            rc.bottom - 80,
             hwnd,
             None,
             GetModuleHandleW(None)?,
@@ -351,12 +380,53 @@ fn create_edit(hwnd: HWND) -> Result<()> {
     Ok(())
 }
 
+#[inline]
+fn makelong(a: u16, b: u16) -> i32 {
+    ((a as u32) | ((b as u32) << 16)) as i32
+}
+
+fn create_trackbar(hwnd: HWND) -> Result<()> {
+    let hwnd = unsafe {
+        CreateWindowExW(
+            WINDOW_EX_STYLE::default(),
+            w!("msctls_trackbar32"),
+            w!("Track Bar"),
+            WS_CHILD | WS_VISIBLE | WINDOW_STYLE(TBS_TOOLTIPS | TBS_AUTOTICKS),
+            145,
+            50,
+            400,
+            30,
+            hwnd,
+            HMENU(ID_TRACKBAR as _),
+            None,
+            None,
+        )
+    }?;
+    unsafe { SendMessageW(hwnd, TBM_SETRANGE, WPARAM(1), LPARAM(makelong(5, 25) as _)) };
+    unsafe { SendMessageW(hwnd, TBM_SETPAGESIZE, None, LPARAM(5)) };
+    unsafe { SendMessageW(hwnd, TBM_SETTICFREQ, WPARAM(5), LPARAM(0)) };
+    unsafe { SendMessageW(hwnd, TBM_SETPOS, WPARAM(1), LPARAM(10)) };
+    TRACKBAR_HWND.get_or_init(|| Hwnd::new(hwnd));
+    Ok(())
+}
+
+fn init_common_control() -> Result<()> {
+    let icc = INITCOMMONCONTROLSEX {
+        dwSize: size_of::<INITCOMMONCONTROLSEX>() as _,
+        dwICC: ICC_BAR_CLASSES,
+    };
+    unsafe { InitCommonControlsEx(&icc).ok()? };
+    Ok(())
+}
+
 fn create(hwnd: HWND) -> Result<()> {
+    init_common_control()?;
     create_play_button(hwnd)?;
     create_clear_button(hwnd)?;
     create_save_button(hwnd)?;
     create_edit(hwnd)?;
     create_combobox(hwnd)?;
+    create_trackbar(hwnd)?;
     Ok(())
 }
 
