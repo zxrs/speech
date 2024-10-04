@@ -1,5 +1,5 @@
 # speech
 Example app using Windows SpeechSynthesis API written in Rust
 
-![speech](https://github.com/user-attachments/assets/d4fd1b69-8e4b-46c2-9291-4c4687acd71f)
+![speech](https://github.com/user-attachments/assets/9967310b-d6c5-46a2-97b8-e3feb8014a46)
 
