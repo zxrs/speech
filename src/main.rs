@@ -215,32 +215,6 @@ fn paint(hwnd: HWND) -> Result<()> {
     Ok(())
 }
 
-unsafe extern "system" fn wnd_proc(
-    hwnd: HWND,
-    msg: u32,
-    wparam: WPARAM,
-    lparam: LPARAM,
-) -> LRESULT {
-    match msg {
-        WM_CREATE => {
-            create(hwnd).ok();
-        }
-        WM_COMMAND => {
-            command(hwnd, wparam).ok();
-        }
-        WM_PAINT => {
-            paint(hwnd).ok();
-        }
-        WM_DESTROY => PostQuitMessage(0),
-        _ => return DefWindowProcW(hwnd, msg, wparam, lparam),
-    }
-    LRESULT::default()
-}
-
-fn loword(dword: u32) -> u16 {
-    ((dword << 16) >> 16) as _
-}
-
 fn get_edit_control_text() -> Result<Vec<u16>> {
     let hwnd = EDIT_HWND.get().context("no handle.")?.handle();
     let len = unsafe { GetWindowTextLengthW(hwnd) };
@@ -392,11 +366,6 @@ fn create_edit(hwnd: HWND) -> Result<()> {
     Ok(())
 }
 
-#[inline]
-fn makelong(a: u16, b: u16) -> i32 {
-    ((a as u32) | ((b as u32) << 16)) as i32
-}
-
 fn create_trackbar(hwnd: HWND) -> Result<()> {
     let hwnd = unsafe {
         CreateWindowExW(
@@ -422,6 +391,7 @@ fn create_trackbar(hwnd: HWND) -> Result<()> {
     Ok(())
 }
 
+/// トラックバーを生成するためにコモンコントロールを初期化する
 fn init_common_control() -> Result<()> {
     let icc = INITCOMMONCONTROLSEX {
         dwSize: size_of::<INITCOMMONCONTROLSEX>() as _,
@@ -431,6 +401,7 @@ fn init_common_control() -> Result<()> {
     Ok(())
 }
 
+/// 各種 UI を生成する
 fn create(hwnd: HWND) -> Result<()> {
     init_common_control()?;
     create_play_button(hwnd)?;
@@ -442,6 +413,30 @@ fn create(hwnd: HWND) -> Result<()> {
     Ok(())
 }
 
+/// ウィンドウプロシージャ
+unsafe extern "system" fn wnd_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    match msg {
+        WM_CREATE => {
+            create(hwnd).ok();
+        }
+        WM_COMMAND => {
+            command(hwnd, wparam).ok();
+        }
+        WM_PAINT => {
+            paint(hwnd).ok();
+        }
+        WM_DESTROY => PostQuitMessage(0),
+        _ => return DefWindowProcW(hwnd, msg, wparam, lparam),
+    }
+    LRESULT::default()
+}
+
+/// エントリーポイント
 fn main() -> Result<()> {
     let wnd_class = WNDCLASSW {
         lpfnWndProc: Some(wnd_proc),
@@ -484,4 +479,16 @@ fn main() -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// ヘルパー関数
+#[inline]
+fn makelong(a: u16, b: u16) -> i32 {
+    ((a as u32) | ((b as u32) << 16)) as i32
+}
+
+/// ヘルパー関数
+#[inline]
+fn loword(dword: u32) -> u16 {
+    ((dword << 16) >> 16) as _
 }
