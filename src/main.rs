@@ -48,19 +48,31 @@ use windows::{
     },
 };
 
+/// メインウィンドウのクラス名
 const CLASS_NAME: PCWSTR = w!("speech_window_cls42");
+/// 再生ボタンの ID
 const ID_PLAY: u16 = 5890;
+/// クリアボタンの ID
 const ID_CLEAR: u16 = 5891;
+/// 保存ボタンの ID
 const ID_SAVE: u16 = 5892;
+/// コンボボックスの ID
 const ID_COMBO: u16 = 5893;
+/// トラックバーの ID
 const ID_TRACKBAR: u16 = 5894;
+/// エディットコントロールの [HWND](https://microsoft.github.io/windows-docs-rs/doc/windows/Win32/Foundation/struct.HWND.html) を保持するためのグローバル変数
 static EDIT_HWND: OnceLock<Hwnd> = OnceLock::new();
+/// コンボボックスの [HWND](https://microsoft.github.io/windows-docs-rs/doc/windows/Win32/Foundation/struct.HWND.html) を保持するためのグローバル変数
 static COMBOBOX_HWND: OnceLock<Hwnd> = OnceLock::new();
+/// トラックバーの [HWND](https://microsoft.github.io/windows-docs-rs/doc/windows/Win32/Foundation/struct.HWND.html) を保持するためのグローバル変数
 static TRACKBAR_HWND: OnceLock<Hwnd> = OnceLock::new();
+/// スピーチ再生スレッド実行待ちのための [Sender] を保持しておくグローバル変数
 static STOP: Mutex<Vec<Sender<()>>> = Mutex::new(vec![]);
 
+/// [HWND](https://microsoft.github.io/windows-docs-rs/doc/windows/Win32/Foundation/struct.HWND.html) をグローバル変数に保持するためのラッパ構造体
 struct Hwnd(HWND);
 
+/// [Hwnd] 構造体を別スレッドに送れるようにマーカトレイトである Send, Sync を実装する
 unsafe impl Sync for Hwnd {}
 unsafe impl Send for Hwnd {}
 
