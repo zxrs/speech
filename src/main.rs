@@ -117,7 +117,7 @@ fn get_selected_voice_information() -> Result<VoiceInformation> {
 fn get_speaking_rate() -> Result<f64> {
     let hwnd = TRACKBAR_HWND.get().context("no handle.")?.handle();
     let ret = unsafe { SendMessageW(hwnd, 1024, None, None) }.0 as f64 / 10.0;
-    ensure!(0.5 <= ret && ret <= 2.5, "invalid speaking rate.");
+    ensure!((0.5..=2.5).contains(&ret), "invalid speaking rate.");
     Ok(ret)
 }
 
@@ -211,7 +211,7 @@ fn paint(hwnd: HWND) -> Result<()> {
     unsafe { SetBkMode(hdc, TRANSPARENT) };
     unsafe { TextOutW(hdc, 10, 50, w!("読み上げ速度：遅").as_wide()).ok()? };
     unsafe { TextOutW(hdc, 550, 50, w!("速").as_wide()).ok()? };
-    unsafe { EndPaint(hwnd, &mut ps).ok()? };
+    unsafe { EndPaint(hwnd, &ps).ok()? };
     Ok(())
 }
 
