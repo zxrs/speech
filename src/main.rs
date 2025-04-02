@@ -1,17 +1,17 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use anyhow::{ensure, Context, Result};
-use std::char::{decode_utf16, REPLACEMENT_CHARACTER};
+use anyhow::{Context, Result, ensure};
+use std::char::{REPLACEMENT_CHARACTER, decode_utf16};
 use std::mem;
+use std::ops::Deref;
 use std::path::PathBuf;
 use std::slice;
 use std::sync::{
-    mpsc::{self, Sender},
     Mutex, OnceLock,
+    mpsc::{self, Sender},
 };
 use std::thread;
 use windows::{
-    core::{w, Interface, HSTRING, PCWSTR, PWSTR},
     Foundation::TypedEventHandler,
     Media::{
         Core::MediaSource,
@@ -22,30 +22,31 @@ use windows::{
     Win32::{
         Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM},
         Graphics::Gdi::{
-            BeginPaint, EndPaint, GetSysColorBrush, SetBkMode, TextOutW, UpdateWindow,
-            COLOR_MENUBAR, PAINTSTRUCT, TRANSPARENT,
+            BeginPaint, COLOR_MENUBAR, EndPaint, GetSysColorBrush, PAINTSTRUCT, SetBkMode,
+            TRANSPARENT, TextOutW, UpdateWindow,
         },
         System::{LibraryLoader::GetModuleHandleW, WinRT::IBufferByteAccess},
         UI::{
             Controls::{
                 Dialogs::{GetSaveFileNameW, OPENFILENAMEW},
-                InitCommonControlsEx, ICC_BAR_CLASSES, INITCOMMONCONTROLSEX, TBM_SETPAGESIZE,
+                ICC_BAR_CLASSES, INITCOMMONCONTROLSEX, InitCommonControlsEx, TBM_SETPAGESIZE,
                 TBM_SETPOS, TBM_SETRANGE, TBM_SETTICFREQ, TBS_AUTOTICKS, TBS_TOOLTIPS,
                 WC_COMBOBOXW,
             },
             WindowsAndMessaging::{
-                CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClientRect, GetMessageW,
-                GetWindowTextLengthW, GetWindowTextW, MessageBoxW, PostQuitMessage, RegisterClassW,
-                SendMessageW, ShowWindow, TranslateMessage, BS_PUSHBUTTON, CBS_DROPDOWNLIST,
-                CBS_HASSTRINGS, CBS_SORT, CB_ADDSTRING, CB_GETCURSEL, CB_GETLBTEXT,
-                CB_SELECTSTRING, CW_USEDEFAULT, ES_AUTOVSCROLL, ES_MULTILINE, ES_WANTRETURN, HMENU,
-                MB_OK, MSG, SW_SHOW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_COMMAND, WM_CREATE,
+                BS_PUSHBUTTON, CB_ADDSTRING, CB_GETCURSEL, CB_GETLBTEXT, CB_SELECTSTRING,
+                CBS_DROPDOWNLIST, CBS_HASSTRINGS, CBS_SORT, CW_USEDEFAULT, CreateWindowExW,
+                DefWindowProcW, DispatchMessageW, ES_AUTOVSCROLL, ES_MULTILINE, ES_WANTRETURN,
+                GetClientRect, GetMessageW, GetWindowTextLengthW, GetWindowTextW, HMENU, MB_OK,
+                MSG, MessageBoxW, PostQuitMessage, RegisterClassW, SW_SHOW, SendMessageW,
+                ShowWindow, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE, WM_COMMAND, WM_CREATE,
                 WM_DESTROY, WM_PAINT, WM_SETTEXT, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD,
                 WS_EX_STATICEDGE, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP,
                 WS_VISIBLE, WS_VSCROLL,
             },
         },
     },
+    core::{HSTRING, Interface, PCWSTR, PWSTR, w},
 };
 
 /// メインウィンドウのクラス名
@@ -96,15 +97,15 @@ fn get_selected_voice_information() -> Result<VoiceInformation> {
         SendMessageW(
             hwnd,
             CB_GETLBTEXT,
-            WPARAM(ret.0 as _),
-            LPARAM(buf.as_ptr() as _),
+            Some(WPARAM(ret.0 as _)),
+            Some(LPARAM(buf.as_ptr() as _)),
         )
     };
 
     SpeechSynthesizer::AllVoices()?
         .into_iter()
         .filter_map(|v| {
-            if v.DisplayName().ok()?.as_wide() == &buf[..ret.0 as _] {
+            if v.DisplayName().ok()?.deref().eq(&buf[..ret.0 as _]) {
                 Some(v)
             } else {
                 None
@@ -122,7 +123,7 @@ fn get_speaking_rate() -> Result<f64> {
 }
 
 fn speech_synthesis_stream(source: &[u16]) -> Result<SpeechSynthesisStream> {
-    let source = HSTRING::from_wide(source)?;
+    let source = HSTRING::from_wide(source);
     let synth = SpeechSynthesizer::new()?;
     let voice = get_selected_voice_information()?;
     synth.SetVoice(&voice)?;
@@ -201,7 +202,7 @@ fn save_to_wav(hwnd: HWND) -> Result<()> {
     let file_name = file_path.file_name().context("no file name.")?;
     let msg = format!("{} を保存しました。", file_name.to_string_lossy());
     let msg = msg.encode_utf16().chain(Some(0)).collect::<Vec<_>>();
-    unsafe { MessageBoxW(hwnd, PCWSTR(msg.as_ptr()), w!("speech"), MB_OK) };
+    unsafe { MessageBoxW(Some(hwnd), PCWSTR(msg.as_ptr()), w!("speech"), MB_OK) };
     Ok(())
 }
 
@@ -268,8 +269,8 @@ fn create_button(
             y,
             width,
             height,
-            hwnd,
-            HMENU(id as _),
+            Some(hwnd),
+            Some(HMENU(id as _)),
             None,
             None,
         )?
@@ -306,8 +307,8 @@ fn create_combobox(hwnd: HWND) -> Result<()> {
             12,
             227,
             200,
-            hwnd,
-            HMENU(ID_COMBO as _),
+            Some(hwnd),
+            Some(HMENU(ID_COMBO as _)),
             None,
             None,
         )?
@@ -317,7 +318,7 @@ fn create_combobox(hwnd: HWND) -> Result<()> {
         .into_iter()
         .try_for_each(|v| -> Result<()> {
             let name = v.DisplayName()?;
-            unsafe { SendMessageW(hwnd, CB_ADDSTRING, None, LPARAM(name.as_ptr() as _)) };
+            unsafe { SendMessageW(hwnd, CB_ADDSTRING, None, Some(LPARAM(name.as_ptr() as _))) };
             Ok(())
         })?;
 
@@ -327,7 +328,7 @@ fn create_combobox(hwnd: HWND) -> Result<()> {
             hwnd,
             CB_SELECTSTRING,
             None,
-            LPARAM(default_voice.as_ptr() as _),
+            Some(LPARAM(default_voice.as_ptr() as _)),
         )
     };
     COMBOBOX_HWND.get_or_init(|| Hwnd::new(hwnd));
@@ -356,9 +357,9 @@ fn create_edit(hwnd: HWND) -> Result<()> {
             80,
             rc.right,
             rc.bottom - 80,
-            hwnd,
+            Some(hwnd),
             None,
-            GetModuleHandleW(None)?,
+            Some(GetModuleHandleW(None)?.into()),
             None,
         )?
     };
@@ -377,16 +378,23 @@ fn create_trackbar(hwnd: HWND) -> Result<()> {
             50,
             400,
             30,
-            hwnd,
-            HMENU(ID_TRACKBAR as _),
+            Some(hwnd),
+            Some(HMENU(ID_TRACKBAR as _)),
             None,
             None,
         )
     }?;
-    unsafe { SendMessageW(hwnd, TBM_SETRANGE, WPARAM(1), LPARAM(makelong(5, 25) as _)) };
-    unsafe { SendMessageW(hwnd, TBM_SETPAGESIZE, None, LPARAM(5)) };
-    unsafe { SendMessageW(hwnd, TBM_SETTICFREQ, WPARAM(5), LPARAM(0)) };
-    unsafe { SendMessageW(hwnd, TBM_SETPOS, WPARAM(1), LPARAM(10)) };
+    unsafe {
+        SendMessageW(
+            hwnd,
+            TBM_SETRANGE,
+            Some(WPARAM(1)),
+            Some(LPARAM(makelong(5, 25) as _)),
+        )
+    };
+    unsafe { SendMessageW(hwnd, TBM_SETPAGESIZE, None, Some(LPARAM(5))) };
+    unsafe { SendMessageW(hwnd, TBM_SETTICFREQ, Some(WPARAM(5)), Some(LPARAM(0))) };
+    unsafe { SendMessageW(hwnd, TBM_SETPOS, Some(WPARAM(1)), Some(LPARAM(10))) };
     TRACKBAR_HWND.get_or_init(|| Hwnd::new(hwnd));
     Ok(())
 }
@@ -430,8 +438,8 @@ unsafe extern "system" fn wnd_proc(
         WM_PAINT => {
             paint(hwnd).ok();
         }
-        WM_DESTROY => PostQuitMessage(0),
-        _ => return DefWindowProcW(hwnd, msg, wparam, lparam),
+        WM_DESTROY => unsafe { PostQuitMessage(0) },
+        _ => return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
     }
     LRESULT::default()
 }

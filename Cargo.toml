@@ -1,13 +1,13 @@
 [package]
 name = "speech"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 anyhow = "1.0"
 
 [dependencies.windows]
-version = "0.58"
+version = "0.61"
 features = [
     "Foundation_Collections",
     "Media_SpeechSynthesis",
