@@ -129,7 +129,7 @@ fn speech_synthesis_stream(source: &[u16]) -> Result<SpeechSynthesisStream> {
     synth.SetVoice(&voice)?;
     let speaking_rate = get_speaking_rate()?;
     synth.Options()?.SetSpeakingRate(speaking_rate)?;
-    let stream = synth.SynthesizeTextToStreamAsync(&source)?.get()?;
+    let stream = synth.SynthesizeTextToStreamAsync(&source)?.join()?;
     Ok(stream)
 }
 
@@ -192,7 +192,7 @@ fn save_to_wav(hwnd: HWND) -> Result<()> {
     let stream = speech_synthesis_stream(&text)?;
     let reader = DataReader::CreateDataReader(&stream)?;
     let size = stream.Size()? as u32;
-    reader.LoadAsync(size)?.get()?;
+    reader.LoadAsync(size)?.join()?;
     let buffer: IBufferByteAccess = reader.ReadBuffer(size)?.cast()?;
     let ptr = unsafe { buffer.Buffer()? };
 

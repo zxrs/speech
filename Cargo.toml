@@ -7,7 +7,7 @@ edition = "2024"
 anyhow = "1.0"
 
 [dependencies.windows]
-version = "0.61"
+version = "0.62"
 features = [
     "Foundation_Collections",
     "Media_SpeechSynthesis",
