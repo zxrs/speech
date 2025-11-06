@@ -37,12 +37,12 @@ use windows::{
                 BS_PUSHBUTTON, CB_ADDSTRING, CB_GETCURSEL, CB_GETLBTEXT, CB_SELECTSTRING,
                 CBS_DROPDOWNLIST, CBS_HASSTRINGS, CBS_SORT, CW_USEDEFAULT, CreateWindowExW,
                 DefWindowProcW, DispatchMessageW, ES_AUTOVSCROLL, ES_MULTILINE, ES_WANTRETURN,
-                GetClientRect, GetMessageW, GetWindowTextLengthW, GetWindowTextW, HMENU, MB_OK,
-                MSG, MessageBoxW, PostQuitMessage, RegisterClassW, SW_SHOW, SendMessageW,
-                ShowWindow, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE, WM_COMMAND, WM_CREATE,
-                WM_DESTROY, WM_PAINT, WM_SETTEXT, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD,
-                WS_EX_STATICEDGE, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP,
-                WS_VISIBLE, WS_VSCROLL,
+                GetClientRect, GetMessageW, GetWindowTextLengthW, GetWindowTextW, HMENU,
+                IDI_APPLICATION, LoadCursorW, MB_OK, MSG, MessageBoxW, PostQuitMessage,
+                RegisterClassW, SW_SHOW, SendMessageW, ShowWindow, TranslateMessage,
+                WINDOW_EX_STYLE, WINDOW_STYLE, WM_COMMAND, WM_CREATE, WM_DESTROY, WM_PAINT,
+                WM_SETTEXT, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD, WS_EX_STATICEDGE,
+                WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
             },
         },
     },
@@ -450,6 +450,7 @@ fn main() -> Result<()> {
         lpfnWndProc: Some(wnd_proc),
         lpszClassName: CLASS_NAME,
         hbrBackground: unsafe { GetSysColorBrush(COLOR_MENUBAR) },
+        hCursor: unsafe { LoadCursorW(None, IDI_APPLICATION)? },
         ..Default::default()
     };
 
